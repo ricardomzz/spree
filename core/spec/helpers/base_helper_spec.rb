@@ -52,7 +52,7 @@ describe Spree::BaseHelper, type: :helper do
 
   # Regression test for #1436
   context 'defining custom image helpers' do
-    let(:product) { mock_model(Spree::Product, images: [], variant_images: []) }
+    let(:product) { build(:product) }
 
     before do
       Spree::Image.class_eval do
@@ -126,6 +126,20 @@ describe Spree::BaseHelper, type: :helper do
   context 'pretty_time' do
     it 'prints in a format' do
       expect(pretty_time(Time.new(2012, 5, 6, 13, 33))).to eq 'May 06, 2012  1:33 PM'
+    end
+
+    it 'return empty stirng when nil is supplied' do
+      expect(pretty_time(nil)).to eq ''
+    end
+  end
+
+  context 'pretty_date' do
+    it 'prints in a format' do
+      expect(pretty_date(Time.new(2012, 5, 6, 13, 33))).to eq 'May 06, 2012'
+    end
+
+    it 'return empty stirng when nil is supplied' do
+      expect(pretty_date(nil)).to eq ''
     end
   end
 
@@ -203,14 +217,32 @@ describe Spree::BaseHelper, type: :helper do
 
       it { is_expected.to eq(nil) }
 
-      context 'and Variant has images' do
-        let!(:image_1) { create :image, viewable: variant }
-        let!(:image_2) { create :image, viewable: variant }
+      context 'with master and variants' do
+        context 'master and variants with images' do
+          let!(:master_image_1) { create :image, viewable: product.master }
+          let!(:master_image_2) { create :image, viewable: product.master }
+          let!(:variant_image_1) { create :image, viewable: variant }
+          let!(:variant_image_2) { create :image, viewable: variant }
 
-        it { is_expected.to eq(image_1) }
+          it { is_expected.to eq(master_image_1) }
+        end
+
+        context 'master without images' do
+          let!(:variant_image_1) { create :image, viewable: variant }
+          let!(:variant_image_2) { create :image, viewable: variant }
+
+          it { is_expected.to eq(variant_image_1) }
+        end
+
+        context 'variants without images' do
+          let!(:master_image_1) { create :image, viewable: product.master }
+          let!(:master_image_2) { create :image, viewable: product.master }
+
+          it { is_expected.to eq(master_image_1) }
+        end
       end
 
-      context 'and master Variant has images' do
+      context 'only with master' do
         let!(:image_1) { create :image, viewable: product.master }
         let!(:image_2) { create :image, viewable: product.master }
 
@@ -236,6 +268,57 @@ describe Spree::BaseHelper, type: :helper do
         let!(:image_2) { create :image, viewable: variant_2 }
 
         it { is_expected.to eq(image_1) }
+      end
+    end
+  end
+
+  describe '#meta_image_data_tag' do
+    context 'when meta_image_url_path is present' do
+      it 'returns meta tag' do
+        allow_any_instance_of(Spree::BaseHelper).to receive(:meta_image_url_path).and_return('image_url')
+
+        expect(meta_image_data_tag).to eq "<meta property=\"og:image\" content=\"image_url\" />"
+      end
+    end
+
+    context 'when meta_image_url_path is absent' do
+      it 'returns meta tag' do
+        allow_any_instance_of(Spree::BaseHelper).to receive(:meta_image_url_path).and_return(nil)
+
+        expect(meta_image_data_tag).to eq nil
+      end
+    end
+  end
+
+  describe '#meta_image_url_path' do
+    context 'when object is not a product' do
+      let!(:taxon) { build :taxon }
+
+      it 'returns false' do
+        allow_any_instance_of(Spree::BaseHelper).to receive(:instance_variable_get).and_return(taxon)
+
+        expect(meta_image_url_path).to eq nil
+      end
+    end
+
+    context 'when object is product' do
+      let!(:product) { build :product }
+      before do
+        allow_any_instance_of(Spree::BaseHelper).to receive(:instance_variable_get).and_return(product)
+      end
+
+      context 'and has no images attached' do
+        it 'returns spree logo url' do
+          expect(meta_image_url_path).to eq asset_path(Spree::Config[:logo])
+        end
+      end
+
+      context 'and has image attached' do
+        let!(:image) { create :image, viewable: product.master }
+
+        it 'returns main image url' do
+          expect(meta_image_url_path).to eq asset_path(main_app.url_for(image.attachment))
+        end
       end
     end
   end

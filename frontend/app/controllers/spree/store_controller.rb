@@ -2,7 +2,6 @@ module Spree
   class StoreController < Spree::BaseController
     include Spree::Core::ControllerHelpers::Order
 
-    before_action :set_current_order, only: :cart_link
     skip_before_action :verify_authenticity_token, only: :ensure_cart, raise: false
 
     def forbidden
@@ -40,12 +39,20 @@ module Spree
       Spree::Frontend::Config[:locale]
     end
 
+    def store_locale
+      current_store.default_locale
+    end
+
     def store_etag
       [
         current_store,
         current_currency,
-        config_locale
+        I18n.locale
       ]
+    end
+
+    def store_last_modified
+      (current_store.updated_at || Time.current).utc
     end
   end
 end

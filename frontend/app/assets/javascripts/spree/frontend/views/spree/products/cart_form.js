@@ -1,3 +1,7 @@
+//= require spree/api/storefront/cart
+//= require ../shared/product_added_modal
+//= require ../shared/variant_select
+
 var ADD_TO_CART_FORM_SELECTOR = '.add-to-cart-form'
 var VARIANT_ID_SELECTOR = '[name="variant_id"]'
 var OPTION_VALUE_SELECTOR = '.product-variants-variant-values-radio'
@@ -17,21 +21,35 @@ function CartForm($, $cartForm) {
   }
 
   this.initialize = function() {
+    this.urlQueryMatchFound = false
     this.selectedOptionValueIds = []
     this.variants = JSON.parse($cartForm.attr('data-variants'))
     this.withOptionValues = Boolean($cartForm.find(OPTION_VALUE_SELECTOR).length)
 
     this.$addToCart = $cartForm.find(ADD_TO_CART_SELECTOR)
     this.$price = $cartForm.find('.price.selling')
+    this.$compareAtPrice = $cartForm.find('.compare-at-price')
     this.$variantIdInput = $cartForm.find(VARIANT_ID_SELECTOR)
 
-    this.initializeForm()
+    this.initializeQueryParamsCheck()
+
+    if (this.urlQueryMatchFound) {
+      this.setSelectedVariantFromUrl()
+    } else {
+      this.initializeForm()
+    }
   }
 
   this.initializeForm = function() {
     if (this.withOptionValues) {
       var $optionValue = this.firstCheckedOptionValue()
-      this.applyCheckedOptionValue($optionValue)
+      this.applyCheckedOptionValue($optionValue, true)
+      var singleOptionValues = this.getSingleOptionValuesFromEachOptionType()
+      if (singleOptionValues.length) {
+        singleOptionValues.forEach(function($value) {
+          this.applyCheckedOptionValue($value, true)
+        })
+      }
     } else {
       this.updateAddToCart()
       this.triggerVariantImages()
@@ -46,17 +64,20 @@ function CartForm($, $cartForm) {
     this.applyCheckedOptionValue($(event.currentTarget))
   }.bind(this)
 
-  this.applyCheckedOptionValue = function($optionValue) {
+  this.applyCheckedOptionValue = function($optionValue, initialUpdate) {
     this.saveCheckedOptionValue($optionValue)
     this.showAvailableVariants()
     this.updateAddToCart()
-    this.updateVariantAvailability()
+    // we don't want to remove availability status on initial page load
+    if (!initialUpdate) this.updateVariantAvailability()
     this.updateVariantPrice()
     this.updateVariantId()
 
     if (this.shouldTriggerVariantImage($optionValue)) {
       this.triggerVariantImages()
     }
+
+    if (initialUpdate) $optionValue.prop('checked', true)
   }
 
   this.saveCheckedOptionValue = function($optionValue) {
@@ -114,6 +135,17 @@ function CartForm($, $cartForm) {
 
   this.firstCheckedOptionValue = function() {
     return $cartForm.find(OPTION_VALUE_SELECTOR + '[data-option-type-index=0]' + ':checked')
+  }
+
+  this.getSingleOptionValuesFromEachOptionType = function() {
+    var singleOptionValues = []
+    this.optionTypes().each(function(_, optionType) {
+      var $optionValues = $(optionType).find(OPTION_VALUE_SELECTOR)
+      if ($optionValues.length === 1) {
+        singleOptionValues.push($optionValues.first())
+      }
+    })
+    return singleOptionValues
   }
 
   this.shouldTriggerVariantImage = function($optionValue) {
@@ -200,7 +232,11 @@ function CartForm($, $cartForm) {
   this.updateVariantAvailability = function() {
     var variant = this.selectedVariant()
 
-    if (!variant) return
+    if (!variant) {
+      return $cartForm
+        .find('.add-to-cart-form-general-availability .add-to-cart-form-general-availability-value')
+        .html('')
+    }
 
     return $cartForm
       .find('.add-to-cart-form-general-availability .add-to-cart-form-general-availability-value')
@@ -212,7 +248,12 @@ function CartForm($, $cartForm) {
 
     if (!variant) return
 
-    this.$price.text(variant.display_price)
+    var shouldDisplayCompareAtPrice = variant.should_display_compare_at_price
+
+    this.$price.html(variant.display_price)
+
+    var compareAtPriceContent = shouldDisplayCompareAtPrice ? '<span class="mr-3">' + variant.display_compare_at_price + '</span>' : ''
+    this.$compareAtPrice.html(compareAtPriceContent)
   }
 
   this.updateVariantId = function() {
@@ -235,37 +276,37 @@ Spree.ready(function($) {
     )
   }
 
-  $('body').on('submit', ADD_TO_CART_FORM_SELECTOR, function(event) {
-    var variantId
-    var quantity
-    var $cartForm = $(event.currentTarget)
-    var $addToCart = $cartForm.find(ADD_TO_CART_SELECTOR)
+  Spree.addToCartFormSubmissionOptions = function() {
+    return {};
+  }
+
+  $('#product-details').on('submit', ADD_TO_CART_FORM_SELECTOR, function(event) {
+    var $cartForm = $(event.currentTarget);
+    var $addToCart = $cartForm.find(ADD_TO_CART_SELECTOR);
+    var variantId = $cartForm.find(VARIANT_ID_SELECTOR).val();
+    var quantity = parseInt($cartForm.find('[name="quantity"]').val());
+    var options = Spree.addToCartFormSubmissionOptions();
 
     event.preventDefault()
-    $addToCart.prop('disabled', true)
-    variantId = $cartForm.find(VARIANT_ID_SELECTOR).val()
-    quantity = parseInt($cartForm.find('[name="quantity"]').val())
+    $addToCart.prop('disabled', true);
     Spree.ensureCart(function() {
       SpreeAPI.Storefront.addToCart(
         variantId,
         quantity,
-        {}, // options hash - you can pass additional parameters here, your backend
+        options, // options hash - you can pass additional parameters here, your backend
         // needs to be aware of those, see API docs:
         // https://github.com/spree/spree/blob/master/api/docs/v2/storefront/index.yaml#L42
         function(response) {
           $addToCart.prop('disabled', false)
-          $cartForm.trigger({
-            type: 'product_add_to_cart',
-            product: JSON.parse(
-              $cartForm.attr('data-product-summary')
-            ),
-            variant: Spree.variantById($cartForm, variantId),
-            quantity_increment: quantity,
-            cart: response.attributes
-          })
           Spree.fetchCart()
+          Spree.showProductAddedModal(JSON.parse(
+            $cartForm.attr('data-product-summary')
+          ), Spree.variantById($cartForm, variantId))
         },
-        function(_error) {
+        function(error) {
+          if (typeof error === 'string' && error !== '') {
+            document.querySelector('#no-product-available .no-product-available-text').innerText = error
+          }
           document.getElementById('overlay').classList.add('shown')
           document.getElementById('no-product-available').classList.add('shown')
           window.scrollTo(0, 0)
@@ -279,5 +320,9 @@ Spree.ready(function($) {
     var $cartForm = $(cartFormElement)
 
     CartForm($, $cartForm)
+  })
+
+  document.addEventListener('turbolinks:request-start', function () {
+    Spree.hideProductAddedModal()
   })
 })

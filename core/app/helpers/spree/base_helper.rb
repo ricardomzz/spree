@@ -22,8 +22,17 @@ module Spree
         to_html
     end
 
+    def display_compare_at_price(product_or_variant)
+      product_or_variant.
+        price_in(current_currency).
+        display_compare_at_price_including_vat_for(current_price_options).
+        to_html
+    end
+
     def link_to_tracking(shipment, options = {})
       return unless shipment.tracking && shipment.shipping_method
+
+      options[:target] ||= :blank
 
       if shipment.tracking_url
         link_to(shipment.tracking, shipment.tracking_url, options)
@@ -32,10 +41,10 @@ module Spree
       end
     end
 
-    def logo(image_path = Spree::Config[:logo])
+    def logo(image_path = Spree::Config[:logo], options = {})
       path = spree.respond_to?(:root_path) ? spree.root_path : main_app.root_path
 
-      link_to path, 'aria-label': current_store.name do
+      link_to path, 'aria-label': current_store.name, method: options[:method] do
         image_tag image_path, alt: current_store.name, title: current_store.name
       end
     end
@@ -58,11 +67,23 @@ module Spree
           meta.reverse_merge!(keywords: [object.name, current_store.meta_keywords].reject(&:blank?).join(', '),
                               description: [object.name, current_store.meta_description].reject(&:blank?).join(', '))
         else
-          meta.reverse_merge!(keywords: current_store.meta_keywords,
-                              description: current_store.meta_description)
+          meta.reverse_merge!(keywords: (current_store.meta_keywords || current_store.seo_title),
+                              description: (current_store.meta_description || current_store.seo_title))
         end
       end
       meta
+    end
+
+    def meta_image_url_path
+      object = instance_variable_get('@' + controller_name.singularize)
+      return unless object.is_a?(Spree::Product)
+
+      image = default_image_for_product_or_variant(object)
+      image&.attachment.present? ? main_app.url_for(image.attachment) : asset_path(Spree::Config[:logo])
+    end
+
+    def meta_image_data_tag
+      tag('meta', property: 'og:image', content: meta_image_url_path) if meta_image_url_path
     end
 
     def meta_data_tags
@@ -81,7 +102,15 @@ module Spree
     end
 
     def pretty_time(time)
+      return '' if time.blank?
+
       [I18n.l(time.to_date, format: :long), time.strftime('%l:%M %p')].join(' ')
+    end
+
+    def pretty_date(date)
+      return '' if date.blank?
+
+      [I18n.l(date.to_date, format: :long)].join(' ')
     end
 
     def seo_url(taxon, options = nil)
@@ -92,20 +121,38 @@ module Spree
       Spree::Core::Engine.frontend_available?
     end
 
+    # we should always try to render image of the default variant
+    # same as it's done on PDP
+    def default_image_for_product(product)
+      if product.images.any?
+        product.images.first
+      elsif product.default_variant.images.any?
+        product.default_variant.images.first
+      elsif product.variant_images.any?
+        product.variant_images.first
+      end
+    end
+
     def default_image_for_product_or_variant(product_or_variant)
-      if product_or_variant.images.empty?
-        if product_or_variant.is_a?(Spree::Product) && product_or_variant.variant_images.any?
-          product_or_variant.variant_images.first
-        elsif product_or_variant.is_a?(Spree::Variant) && product_or_variant.product.variant_images.any?
-          product_or_variant.product.variant_images.first
+      Rails.cache.fetch("spree/default-image/#{product_or_variant.cache_key_with_version}") do
+        if product_or_variant.is_a?(Spree::Product)
+          default_image_for_product(product_or_variant)
+        elsif product_or_variant.is_a?(Spree::Variant)
+          if product_or_variant.images.any?
+            product_or_variant.images.first
+          else
+            default_image_for_product(product_or_variant.product)
+          end
         end
-      else
-        product_or_variant.images.first
       end
     end
 
     def base_cache_key
       [I18n.locale, current_currency]
+    end
+
+    def maximum_quantity
+      Spree::DatabaseTypeUtilities.maximum_value_for(:integer)
     end
 
     private

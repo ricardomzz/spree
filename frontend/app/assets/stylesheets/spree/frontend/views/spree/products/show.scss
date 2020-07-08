@@ -1,20 +1,27 @@
 .product-details {
   &-title {
     font-size: font-px-to-rem(22px);
-    color: theme-color("dark");
+    color: $font-color;
     @include media-breakpoint-up(sm) {
       font-size: font-px-to-rem(34px);
     }
   }
   &-subtitle {
     font-size: font-px-to-rem(14px);
-    color: theme-color("dark");
+    color: $font-color;
     @include media-breakpoint-up(sm) {
       font-size: font-px-to-rem(22px);
     }
     @include media-breakpoint-up(md) {
       font-size: font-px-to-rem(16px);
     }
+  }
+  &-vendor-img {
+    max-height: 100px;
+    max-width: 100px;
+  }
+  &-vendor-name {
+    font-size: font-px-to-rem(20px);
   }
   &-images {
     & > .product-details-thumbnails {
@@ -76,6 +83,7 @@
   .modal-dialog {
     &--zoom {
       &.modal-dialog .modal-content {
+        border: 0;
         padding: 0;
         .modal-close {
           top: 5px;
@@ -161,5 +169,14 @@
   @include media-breakpoint-up(md) {
     font-size: font-px-to-rem(14px);
     line-height: font-px-to-rem(26px);
+  }
+}
+
+#product-details {
+  .breadcrumb-item:last-of-type {
+    display: none;
+    @include media-breakpoint-up(md) {
+      display: block;
+    }
   }
 }

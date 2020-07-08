@@ -29,15 +29,17 @@ group :test do
   gem 'rspec-retry'
   gem 'rspec_junit_formatter'
   gem 'jsonapi-rspec'
-  gem 'simplecov'
+  gem 'simplecov', '0.17.1'
   gem 'webmock', '~> 3.7'
   gem 'timecop'
   gem 'rails-controller-testing'
 end
 
 group :test, :development do
-  gem 'rubocop', '~> 0.60.0', require: false
+  gem 'rubocop', '~> 0.80.0', require: false # bumped
   gem 'rubocop-rspec', require: false
   gem 'pry-byebug'
   gem 'webdrivers', '~> 4.1'
 end
+
+gem 'solargraph', group: :development

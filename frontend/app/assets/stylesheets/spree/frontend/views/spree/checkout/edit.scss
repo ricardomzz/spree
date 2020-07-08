@@ -1,4 +1,11 @@
 .checkout {
+  &-summary {
+    &-container {
+      @include media-breakpoint-up(lg) {
+        top: $spree-header-desktop-height + 25px;
+      }
+    }
+  }
   &-header {
     margin: 0;
     &-link {
@@ -18,10 +25,16 @@
       }
       a {
         color: $header-font-color;
-        padding-left: 15px;
         letter-spacing: 0.5px;
+        text-decoration: none;
         @include media-breakpoint-down(sm) {
           padding-left: 0px;
+        }
+      }
+      &-text {
+        padding-left: 15px;
+        &:hover {
+          text-decoration: underline;
         }
       }
     }
@@ -99,6 +112,9 @@
           height: 36px;
           margin-bottom: 13px;
         }
+        &--full {
+          @include colored-full-circle($primary-background, $secondary-color);
+        }
       }
       &-line {
         display: flex;
@@ -117,23 +133,23 @@
         }
         &.state-delivery {
           hr:first-child {
-            border-color: theme-color('dark-text');
+            border-color: $secondary-color;
           }
         }
         &.state-payment {
           hr:first-child,
           hr:nth-child(2) {
-            border-color: theme-color('dark-text');
+            border-color: $secondary-color;
           }
         }
         &.state-confirm {
           hr {
-            border-color: theme-color('dark-text');
+            border-color: $secondary-color;
           }
         }
         hr {
           margin: 0;
-          width: 33%;
+          flex: 1;
           border: 1px solid theme-color('info');
         }
       }
@@ -478,6 +494,9 @@
           font-size: font-px-to-rem(16px);
         }
       }
+      .delete-address-img {
+        color: $primary-color;
+      }
     }
 
     #checkout-summary {
@@ -486,8 +505,10 @@
       }
 
       @include media-breakpoint-up(lg) {
+        height: 100%;
         padding: 0;
-        min-width: 380px;
+        max-width: 380px;
+        align-self: flex-end;
       }
     }
 

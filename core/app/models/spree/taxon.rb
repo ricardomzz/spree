@@ -21,6 +21,7 @@ module Spree
 
     validates :name, presence: true, uniqueness: { scope: [:parent_id, :taxonomy_id], allow_blank: true, case_sensitive: false }
     validates :permalink, uniqueness: { case_sensitive: false }
+    validates :hide_from_nav, inclusion: { in: [true, false] }
     validates_associated :icon
     validate :check_for_root, on: :create
     with_options length: { maximum: 255 }, allow_blank: true do
@@ -71,6 +72,12 @@ module Spree
         name += "#{ancestor.name} -> "
       end
       ancestor_chain + name.to_s
+    end
+
+    def cached_self_and_descendants_ids
+      Rails.cache.fetch("#{cache_key_with_version}/descendant-ids") do
+        self_and_descendants.ids
+      end
     end
 
     # awesome_nested_set sorts by :lft and :rgt. This call re-inserts the child

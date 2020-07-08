@@ -7,20 +7,71 @@ module Spree
       @body_class
     end
 
-    def spree_breadcrumbs(taxon, separator = '', product = nil)
+    def store_country_iso(store)
+      store ||= current_store
+      return unless store
+      return unless store.default_country
+
+      store.default_country.iso.downcase
+    end
+
+    def stores
+      @stores ||= Spree::Store.includes(:default_country)
+    end
+
+    def store_currency_symbol(store)
+      store ||= current_store
+      return unless store
+      return unless store.default_currency
+
+      ::Money::Currency.find(store.default_currency).symbol
+    end
+
+    def spree_breadcrumbs(taxon, _separator = '', product = nil)
       return '' if current_page?('/') || taxon.nil?
 
-      separator = raw(separator)
-      crumbs = [content_tag(:li, content_tag(:span, link_to(content_tag(:span, Spree.t(:home), itemprop: 'name'), spree.root_path, itemprop: 'url') + separator, itemprop: 'item'), itemscope: 'itemscope', itemtype: 'https://schema.org/ListItem', itemprop: 'itemListElement', class: 'breadcrumb-item')]
+      # breadcrumbs for root
+      crumbs = [content_tag(:li, content_tag(
+        :a, content_tag(
+          :span, Spree.t(:home), itemprop: 'name'
+        ) << content_tag(:meta, nil, itemprop: 'position', content: '0'), itemprop: 'url', href: spree.root_path
+      ) << content_tag(:span, nil, itemprop: 'item', itemscope: 'itemscope', itemtype: 'https://schema.org/Thing', itemid: spree.root_path), itemscope: 'itemscope', itemtype: 'https://schema.org/ListItem', itemprop: 'itemListElement', class: 'breadcrumb-item')]
+
       if taxon
-        crumbs << taxon.ancestors.where.not(parent_id: nil).map { |ancestor| content_tag(:li, content_tag(:span, link_to(content_tag(:span, ancestor.name, itemprop: 'name'), seo_url(ancestor, params: permitted_product_params), itemprop: 'url') + separator, itemprop: 'item'), itemscope: 'itemscope', itemtype: 'https://schema.org/ListItem', itemprop: 'itemListElement', class: 'breadcrumb-item') } unless taxon.ancestors.empty?
-        crumbs << content_tag(:li, content_tag(:span, link_to(content_tag(:span, taxon.name, itemprop: 'name'), seo_url(taxon, params: permitted_product_params), itemprop: 'url') + separator, itemprop: 'item'), class: 'breadcrumb-item', itemscope: 'itemscope', itemtype: 'https://schema.org/ListItem', itemprop: 'itemListElement')
-        crumbs << content_tag(:li, content_tag(:span, content_tag(:span, product.name) + separator), class: 'breadcrumb-item') if product
+        ancestors = taxon.ancestors.where.not(parent_id: nil)
+
+        # breadcrumbs for ancestor taxons
+        crumbs << ancestors.each_with_index.map do |ancestor, index|
+          content_tag(:li, content_tag(
+            :a, content_tag(
+              :span, ancestor.name, itemprop: 'name'
+            ) << content_tag(:meta, nil, itemprop: 'position', content: index + 1), itemprop: 'url', href: seo_url(ancestor, params: permitted_product_params)
+          ) << content_tag(:span, nil, itemprop: 'item', itemscope: 'itemscope', itemtype: 'https://schema.org/Thing', itemid: seo_url(ancestor, params: permitted_product_params)), itemscope: 'itemscope', itemtype: 'https://schema.org/ListItem', itemprop: 'itemListElement', class: 'breadcrumb-item')
+        end
+
+        # breadcrumbs for current taxon
+        crumbs << content_tag(:li, content_tag(
+          :a, content_tag(
+            :span, taxon.name, itemprop: 'name'
+          ) << content_tag(:meta, nil, itemprop: 'position', content: ancestors.size + 1), itemprop: 'url', href: seo_url(taxon, params: permitted_product_params)
+        ) << content_tag(:span, nil, itemprop: 'item', itemscope: 'itemscope', itemtype: 'https://schema.org/Thing', itemid: seo_url(taxon, params: permitted_product_params)), itemscope: 'itemscope', itemtype: 'https://schema.org/ListItem', itemprop: 'itemListElement', class: 'breadcrumb-item')
+
+        # breadcrumbs for product
+        if product
+          crumbs << content_tag(:li, content_tag(
+            :span, content_tag(
+              :span, product.name, itemprop: 'name'
+            ) << content_tag(:meta, nil, itemprop: 'position', content: ancestors.size + 2), itemprop: 'url', href: spree.product_path(product, taxon_id: taxon&.id)
+          ) << content_tag(:span, nil, itemprop: 'item', itemscope: 'itemscope', itemtype: 'https://schema.org/Thing', itemid: spree.product_path(product, taxon_id: taxon&.id)), itemscope: 'itemscope', itemtype: 'https://schema.org/ListItem', itemprop: 'itemListElement', class: 'breadcrumb-item')
+        end
       else
-        crumbs << content_tag(:li, content_tag(:span, Spree.t(:products), itemprop: 'item'), class: 'active', itemscope: 'itemscope', itemtype: 'https://schema.org/ListItem', itemprop: 'itemListElement')
+        # breadcrumbs for product on PDP
+        crumbs << content_tag(:li, content_tag(
+          :span, Spree.t(:products), itemprop: 'item'
+        ) << content_tag(:meta, nil, itemprop: 'position', content: '1'), class: 'active', itemscope: 'itemscope', itemtype: 'https://schema.org/ListItem', itemprop: 'itemListElement')
       end
       crumb_list = content_tag(:ol, raw(crumbs.flatten.map(&:mb_chars).join), class: 'breadcrumb', itemscope: 'itemscope', itemtype: 'https://schema.org/BreadcrumbList')
-      content_tag(:nav, crumb_list, id: 'breadcrumbs', class: 'col-12 mt-1 mt-sm-3 mt-lg-4', aria: { label: 'breadcrumb' })
+      content_tag(:nav, crumb_list, id: 'breadcrumbs', class: 'col-12 mt-1 mt-sm-3 mt-lg-4', aria: { label: Spree.t(:breadcrumbs) })
     end
 
     def class_for(flash_type)
@@ -46,7 +97,7 @@ module Spree
 
         if state_index < current_index
           css_classes << 'completed'
-          link_content = inline_svg_tag 'full_circle.svg', class: 'checkout-progress-steps-image'
+          link_content = content_tag :span, nil, class: 'checkout-progress-steps-image checkout-progress-steps-image--full'
           link_content << text
           text = link_to(link_content, spree.checkout_state_path(state), class: 'd-flex flex-column align-items-center', method: :get)
         end
@@ -61,7 +112,7 @@ module Spree
           content_tag('li', text, class: css_classes.join(' '))
         else
           link_content = if state == @order.state
-                           inline_svg_tag 'full_circle.svg', class: 'checkout-progress-steps-image'
+                           content_tag :span, nil, class: 'checkout-progress-steps-image checkout-progress-steps-image--full'
                          else
                            inline_svg_tag 'circle.svg', class: 'checkout-progress-steps-image'
                          end
@@ -70,7 +121,8 @@ module Spree
         end
       end
       content = content_tag('ul', raw(items.join("\n")), class: 'nav justify-content-between checkout-progress-steps', id: "checkout-step-#{@order.state}")
-      content << content_tag('div', raw('<hr /><hr /><hr />'), class: "checkout-progress-steps-line state-#{@order.state}")
+      hrs = '<hr />' * (states.length - 1)
+      content << content_tag('div', raw(hrs), class: "checkout-progress-steps-line state-#{@order.state}")
     end
 
     def flash_messages(opts = {})
@@ -124,18 +176,6 @@ module Spree
         width: image_style&.dig(:width) || 278,
         height: image_style&.dig(:height) || 371,
         class: "product-component-image d-block mw-100 #{image_class}"
-      )
-    end
-
-    def main_nav_image(category, type)
-      image_path = "#{type}_#{category}.jpg"
-      image_url = asset_path(asset_exists?(image_path) ? image_path : 'noimage/plp.png')
-
-      lazy_image(
-        src: image_url,
-        alt: category,
-        width: 350,
-        height: 234
       )
     end
 
@@ -211,17 +251,41 @@ module Spree
       ]
     end
 
-    def filtering_params
-      static_filters = %w(keywords price sort_by)
+    def static_filters
+      @static_filters ||= Spree::Frontend::Config[:products_filters]
+    end
 
-      available_option_types.map(&:filter_param).concat(static_filters)
+    def additional_filters_partials
+      @additional_filters_partials ||= Spree::Frontend::Config[:additional_filters_partials]
+    end
+
+    def filtering_params
+      @filtering_params ||= available_option_types.map(&:filter_param).concat(static_filters)
+    end
+
+    def filtering_params_cache_key
+      @filtering_params_cache_key ||= params.permit(*filtering_params)&.reject { |_, v| v.blank? }&.to_param
+    end
+
+    def available_option_types_cache_key
+      @available_option_types_cache_key ||= Spree::OptionType.maximum(:updated_at)&.utc&.to_i
     end
 
     def available_option_types
-      @available_option_types ||= Rails.cache.fetch('available-option-types', expires_in: 3.minutes) do
+      @available_option_types ||= Rails.cache.fetch("available-option-types/#{available_option_types_cache_key}") do
         Spree::OptionType.includes(:option_values).to_a
       end
       @available_option_types
+    end
+
+    def spree_social_link(service)
+      return '' if current_store.send(service).blank?
+
+      link_to "https://#{service}.com/#{current_store.send(service)}", target: :blank, rel: 'nofollow noopener', 'aria-label': service do
+        content_tag :figure, id: service, class: 'px-2' do
+          icon(name: service, width: 22, height: 22)
+        end
+      end
     end
 
     private
